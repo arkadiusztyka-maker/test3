@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: paczkomat-pogodynka
+    runtime: python
+    plan: free
+    branch: ccr-c321f6df-9b6bdb
+    buildCommand: echo "brak zaleznosci"
+    startCommand: python3 pogodynka/app.py
+    healthCheckPath: /
