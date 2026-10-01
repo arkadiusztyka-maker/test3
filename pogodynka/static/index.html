@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#ffcd00">
+<title>Paczkomat Pogodynka</title>
+<style>
+  :root {
+    --bg: #f6f5f1; --card: #fff; --text: #1d1d1b; --muted: #6b6a66; --line: #e4e2dc;
+    --accent: #ffcd00; --accent-text: #1d1d1b; --err: #b3261e;
+    --q1: #2e9e4f; --q2: #7cb342; --q3: #c0a000; --q4: #ef8a17; --q5: #d84315; --q6: #8e24aa;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #141412; --card: #1f1f1c; --text: #f1f0eb; --muted: #a3a29c; --line: #34332f; --err: #ff8a80; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { background: var(--accent); color: var(--accent-text); padding: 16px; }
+  header h1 { margin: 0; font-size: 20px; }
+  header p { margin: 2px 0 0; font-size: 13px; opacity: .8; }
+  main { max-width: 640px; margin: 0 auto; padding: 16px; }
+  form { display: flex; gap: 8px; }
+  input { flex: 1; min-width: 0; font: inherit; padding: 12px; border: 1px solid var(--line);
+    border-radius: 10px; background: var(--card); color: var(--text); text-transform: uppercase; }
+  button { font: inherit; padding: 12px 14px; border: 0; border-radius: 10px; cursor: pointer;
+    background: var(--accent); color: var(--accent-text); font-weight: 600; }
+  button.ghost { background: transparent; color: var(--text); border: 1px solid var(--line); font-weight: 500; }
+  .row { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+  h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 24px 0 8px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px; margin-bottom: 10px; }
+  .card h3 { margin: 0; font-size: 18px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .addr { color: var(--muted); font-size: 14px; margin-top: 2px; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
+  .metric { background: var(--bg); border-radius: 10px; padding: 8px; text-align: center; }
+  .metric b { display: block; font-size: 20px; }
+  .metric span { font-size: 12px; color: var(--muted); }
+  .badge { display: inline-block; padding: 3px 10px; border-radius: 999px; color: #fff; font-size: 13px; font-weight: 600; }
+  .item { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 12px 0;
+    border-top: 1px solid var(--line); cursor: pointer; }
+  .item:first-child { border-top: 0; }
+  .meta { font-size: 12px; color: var(--muted); margin-top: 10px; display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+  .err { color: var(--err); font-size: 14px; margin-top: 8px; }
+  .star { background: none; border: 0; padding: 0 4px; font-size: 22px; color: var(--muted); }
+  .star.on { color: #e0a800; }
+  .small { font-size: 13px; color: var(--muted); }
+  a { color: inherit; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Paczkomat Pogodynka</h1>
+  <p>Temperatura, wilgotność, ciśnienie i smog z czujników w paczkomatach InPost</p>
+</header>
+<main>
+  <form id="search">
+    <input id="code" placeholder="Kod paczkomatu, np. WRO358M" autocomplete="off" autocapitalize="characters">
+    <button>Szukaj</button>
+  </form>
+  <div class="row">
+    <button class="ghost" id="geo" type="button">📍 Najbliższe z czujnikiem</button>
+  </div>
+  <div id="searchErr" class="err"></div>
+
+  <section id="favSection" hidden>
+    <h2>Ulubione</h2>
+    <div id="favs"></div>
+  </section>
+
+  <section id="resultSection" hidden>
+    <h2 id="resultTitle">Wynik</h2>
+    <div id="result"></div>
+  </section>
+
+  <section id="nearSection" hidden>
+    <h2>Paczkomaty z czujnikami w pobliżu</h2>
+    <div class="card" id="near"></div>
+  </section>
+
+  <p class="small">Nieoficjalne API InPostu. Odczyty są pobierane najwyżej co 30 minut.
+    Temperatura i wilgotność mierzone są w obudowie paczkomatu, więc mogą odbiegać od rzeczywistości.</p>
+</main>
+
+<script>
+const QCOLORS = { VERY_GOOD: "var(--q1)", GOOD: "var(--q2)", SATISFACTORY: "var(--q3)",
+  MODERATE: "var(--q4)", BAD: "var(--q5)", VERY_BAD: "var(--q6)" };
+const QLABELS = { VERY_GOOD: "bardzo dobra", GOOD: "dobra", SATISFACTORY: "umiark. dobra",
+  MODERATE: "umiarkowana", BAD: "zła", VERY_BAD: "bardzo zła" };
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const fmt = (v, d = 1) => v == null ? "–" : Number(v).toFixed(d).replace(".", ",");
+
+function loadFavs() { try { return JSON.parse(localStorage.getItem("favs") || "[]"); } catch { return []; } }
+function saveFavs(f) { try { localStorage.setItem("favs", JSON.stringify(f)); } catch {} }
+let favs = loadFavs();
+
+async function api(path) {
+  const r = await fetch(path);
+  const j = await r.json().catch(() => ({ error: "Błąd serwera" }));
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+
+function badge(level, label) {
+  if (!level) return "";
+  return `<span class="badge" style="background:${QCOLORS[level] || "var(--muted)"}">${esc(label || level)}</span>`;
+}
+
+function readingCard(code, address) {
+  const el = document.createElement("div");
+  el.className = "card";
+  el.innerHTML = `<h3><span>${esc(code)}</span><button class="star" title="Ulubione">★</button></h3>
+    ${address ? `<div class="addr">${esc(address)}</div>` : ""}
+    <div class="body small" style="margin-top:10px">Pobieram odczyty…</div>`;
+  const star = el.querySelector(".star");
+  const isFav = () => favs.some(f => f.code === code);
+  const paint = () => star.classList.toggle("on", isFav());
+  paint();
+  star.onclick = () => {
+    favs = isFav() ? favs.filter(f => f.code !== code) : [...favs, { code, address }];
+    saveFavs(favs); paint(); renderFavs();
+  };
+  load(el, code);
+  return el;
+}
+
+async function load(el, code, id) {
+  const body = el.querySelector(".body");
+  try {
+    const r = await api(`/api/reading/${encodeURIComponent(code)}` + (id ? `?id=${encodeURIComponent(id)}` : ""));
+    const m = (label, v, unit, d) => `<div class="metric"><b>${fmt(v, d)}<small style="font-size:12px;font-weight:500"> ${unit}</small></b><span>${label}</span></div>`;
+    body.className = "body";
+    body.innerHTML = `
+      <div style="margin-top:10px">${badge(r.air_index_level, "Powietrze: " + (r.air_quality || r.air_index_level))}</div>
+      <div class="grid">
+        ${m("Temperatura", r.temperature, "°C")}
+        ${m("Wilgotność", r.humidity, "%", 0)}
+        ${m("Ciśnienie", r.pressure, "hPa", 0)}
+        ${m("PM1", r.pm1, "µg/m³")}
+        ${m("PM2,5", r.pm25, "µg/m³")}
+        ${m("PM10", r.pm10, "µg/m³")}
+      </div>
+      <div class="meta"><span>Pobrano: ${esc(new Date(r.updated).toLocaleString("pl-PL"))}</span>
+        <a href="/api/reading/${encodeURIComponent(code)}" target="_blank">JSON</a></div>`;
+  } catch (e) {
+    body.className = "body";
+    body.innerHTML = `<div class="err">${esc(e.message)}</div>
+      <div class="small" style="margin-top:8px">Znasz numeryczne ID (z <code>data-shipx-url</code> na stronie paczkomatu)?</div>
+      <form class="row idform"><input placeholder="np. 46960" inputmode="numeric" style="text-transform:none"><button>Spróbuj</button></form>`;
+    el.querySelector(".idform").onsubmit = (ev) => {
+      ev.preventDefault();
+      const v = ev.target.querySelector("input").value.trim();
+      if (v) { body.innerHTML = "Pobieram odczyty…"; body.className = "body small"; load(el, code, v); }
+    };
+  }
+}
+
+function renderFavs() {
+  $("favSection").hidden = !favs.length;
+  const box = $("favs");
+  box.innerHTML = "";
+  favs.forEach(f => box.appendChild(readingCard(f.code, f.address)));
+}
+
+function renderNear(data) {
+  $("nearSection").hidden = false;
+  const box = $("near");
+  if (!data.items.length) { box.innerHTML = `<div class="small">Brak paczkomatów z czujnikami w okolicy.</div>`; return; }
+  box.innerHTML = data.items.map(p => `
+    <div class="item" data-code="${esc(p.code)}" data-address="${esc(p.address)}">
+      <div><b>${esc(p.code)}</b> <span class="small">${p.distance != null ? (p.distance >= 1000 ? fmt(p.distance / 1000) + " km" : p.distance + " m") : ""}</span>
+        <div class="addr">${esc(p.address)}${p.description ? " · " + esc(p.description) : ""}</div></div>
+      ${badge(p.air_index_level, QLABELS[p.air_index_level])}
+    </div>`).join("");
+  box.querySelectorAll(".item").forEach(it => it.onclick = () => show(it.dataset.code, it.dataset.address));
+}
+
+function show(code, address) {
+  $("resultSection").hidden = false;
+  $("resultTitle").textContent = "Odczyty";
+  $("result").innerHTML = "";
+  $("result").appendChild(readingCard(code, address));
+  $("resultSection").scrollIntoView({ behavior: "smooth" });
+}
+
+$("search").onsubmit = async (ev) => {
+  ev.preventDefault();
+  const code = $("code").value.trim().toUpperCase();
+  if (!code) return;
+  $("searchErr").textContent = "";
+  try {
+    const data = await api(`/api/nearby?code=${encodeURIComponent(code)}`);
+    const o = data.origin;
+    if (o.has_sensor) show(o.code, o.address);
+    else {
+      $("resultSection").hidden = false;
+      $("resultTitle").textContent = "Wynik";
+      $("result").innerHTML = `<div class="card"><h3>${esc(o.code)}</h3><div class="addr">${esc(o.address)}</div>
+        <div class="small" style="margin-top:8px">Ten paczkomat nie ma czujników. Wybierz któryś z najbliższych poniżej.</div></div>`;
+    }
+    renderNear(data);
+  } catch (e) { $("searchErr").textContent = e.message; }
+};
+
+$("geo").onclick = () => {
+  $("searchErr").textContent = "";
+  if (!navigator.geolocation) { $("searchErr").textContent = "Przeglądarka nie udostępnia lokalizacji."; return; }
+  $("geo").disabled = true;
+  navigator.geolocation.getCurrentPosition(async (pos) => {
+    try { renderNear(await api(`/api/nearby?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}`)); }
+    catch (e) { $("searchErr").textContent = e.message; }
+    $("geo").disabled = false;
+  }, (e) => { $("searchErr").textContent = "Brak dostępu do lokalizacji: " + e.message; $("geo").disabled = false; });
+};
+
+renderFavs();
+</script>
+</body>
+</html>
