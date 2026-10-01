@@ -6,6 +6,14 @@ Twoja prywatna stacja pogodowa z czujników w paczkomatach InPost: temperatura, 
 - JSON do automatyki domowej (Home Assistant, Node-RED, cokolwiek),
 - tylko Python 3.8+, bez dodatkowych bibliotek.
 
+## Najszybciej: hosting za darmo na Render
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/arkadiusztyka-maker/test3)
+
+Kliknij przycisk, zaloguj się przez GitHub i zatwierdź. Po 1–2 minutach dostaniesz adres typu
+`https://paczkomat-pogodynka.onrender.com`. Darmowa instancja usypia się po 15 min bez ruchu,
+więc pierwsze otwarcie po przerwie trwa ok. minuty.
+
 ## Uruchomienie
 
 ```bash
